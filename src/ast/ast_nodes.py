@@ -3,28 +3,48 @@ from dataclasses import dataclass
 from typing import List, Optional, Union
 
 
-# ================= PROGRAM ===================
+# ================= BASE CLASSES ===================
 
-@dataclass
-class Program:
-    name: str
-    decls: List["VarDecl"]
-    subroutines: List["SubroutineDecl"]
-    body: "Block"
+class Stmt:
+    pass
+
+
+class Expr:
+    pass
 
 
 # ================= TYPES ===================
 
 @dataclass
 class ArrayType:
-    ranges: List[tuple[int, int]]  # list of (low, high)
-    base_type: str                 # integer, real, char, boolean
+    ranges: List[tuple[int, int]]
+    base_type: str
+
+
+@dataclass
+class RecordType:
+    fields: List["VarDecl"]
 
 
 @dataclass
 class VarDecl:
     names: List[str]
-    typ: Union[str, ArrayType]
+    typ: Union[str, ArrayType, RecordType]
+
+
+# ================= CONST / TYPE DECLS ===================
+
+@dataclass
+class ConstDecl:
+    name: str
+    value: "Literal"
+    typ: str
+
+
+@dataclass
+class TypeDecl:
+    name: str
+    typ: Union[str, RecordType]
 
 
 # ================= SUBROUTINES ===================
@@ -56,10 +76,6 @@ class FunctionDecl(SubroutineDecl):
 
 # ================= STATEMENTS ===================
 
-class Stmt:
-    pass
-
-
 @dataclass
 class Block(Stmt):
     statements: List[Stmt]
@@ -67,7 +83,7 @@ class Block(Stmt):
 
 @dataclass
 class Assign(Stmt):
-    target: Union[str, "ArrayAccess"]
+    target: Union[str, "ArrayAccess", "FieldAccess"]
     expr: "Expr"
 
 
@@ -110,16 +126,25 @@ class Readln(Stmt):
 
 
 @dataclass
-class Call(Stmt):
+class Call(Stmt, Expr):
     name: str
     args: List["Expr"]
 
 
+@dataclass
+class CaseBranch:
+    values: List["Expr"]
+    stmt: Stmt
+
+
+@dataclass
+class Case(Stmt):
+    expr: "Expr"
+    branches: List[CaseBranch]
+    else_branch: Optional[Stmt]
+
+
 # ================= EXPRESSIONS ===================
-
-class Expr:
-    pass
-
 
 @dataclass
 class Identifier(Expr):
@@ -130,6 +155,12 @@ class Identifier(Expr):
 class ArrayAccess(Expr):
     name: str
     indexes: List[Expr]
+
+
+@dataclass
+class FieldAccess(Expr):
+    obj: str
+    field: str
 
 
 @dataclass
@@ -149,3 +180,15 @@ class BinaryOp(Expr):
     op: str
     left: Expr
     right: Expr
+
+
+# ================= PROGRAM ===================
+
+@dataclass
+class Program:
+    name: str
+    const_decls: List[ConstDecl]
+    type_decls: List[TypeDecl]
+    decls: List[VarDecl]
+    subroutines: List[SubroutineDecl]
+    body: Block
