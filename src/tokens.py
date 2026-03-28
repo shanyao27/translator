@@ -33,7 +33,7 @@ KEYWORDS = {
     "for", "to", "downto",
     "repeat", "until",
     "writeln", "readln",
-    "procedure", "function",  # поддержка процедур и функций
+    "procedure", "function",
 
     # типы
     "integer", "real", "char", "boolean", "string",
@@ -49,6 +49,9 @@ KEYWORDS = {
 
     # арифметика
     "mod",
+
+    # новое
+    "const", "type", "record", "case",
 }
 
 TYPE_KEYWORDS = {"integer", "real", "char", "boolean", "string"}

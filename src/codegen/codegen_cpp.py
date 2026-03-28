@@ -24,20 +24,23 @@ class CppGenerator:
     def __init__(self):
         self.ind = 0
         self.lines = []
-        self.current_function = None     # для return через fname := value
+        self.current_function = None
 
-    # -------------------------
     def emit(self, s=""):
         self.lines.append("    " * self.ind + s)
 
-    # -------------------------
     def gen(self, prog: Program) -> str:
-
         self.emit("#include <iostream>")
         self.emit("#include <string>")
         self.emit("")
 
-        # процедуры и функции до main
+        # struct declarations
+        for td in prog.type_decls:
+            self.gen_type_decl(td)
+        if prog.type_decls:
+            self.emit("")
+
+        # procedures and functions before main
         for sub in prog.subroutines:
             self.gen_subroutine(sub)
             self.emit("")
@@ -46,7 +49,13 @@ class CppGenerator:
         self.emit("int main() {")
         self.ind += 1
 
-        # глобальные переменные
+        # constants
+        for c in prog.const_decls:
+            self.gen_const(c)
+        if prog.const_decls:
+            self.emit("")
+
+        # global variables
         for d in prog.decls:
             self.gen_decl(d)
         if prog.decls:
@@ -61,10 +70,29 @@ class CppGenerator:
         return "\n".join(self.lines)
 
     # -------------------------
+    def gen_type_decl(self, td: TypeDecl):
+        if isinstance(td.typ, RecordType):
+            self.emit(f"struct {td.name} {{")
+            self.ind += 1
+            for field in td.typ.fields:
+                self.gen_decl(field)
+            self.ind -= 1
+            self.emit("};")
+        elif isinstance(td.typ, str):
+            ctyp = TYPE_MAP.get(td.typ, td.typ)
+            self.emit(f"using {td.name} = {ctyp};")
+
+    # -------------------------
+    def gen_const(self, c: ConstDecl):
+        ctyp = TYPE_MAP.get(c.typ, c.typ)
+        val = self.gen_expr(c.value)
+        self.emit(f"const {ctyp} {c.name} = {val};")
+
+    # -------------------------
     def gen_decl(self, d: VarDecl):
         typ = d.typ
         if isinstance(typ, str):
-            ctyp = TYPE_MAP[typ]
+            ctyp = TYPE_MAP.get(typ, typ)  # fallback to name for user-defined types
             names = ", ".join(d.names)
             self.emit(f"{ctyp} {names};")
             return
@@ -90,16 +118,13 @@ class CppGenerator:
             ret = TYPE_MAP[sub.ret_type]
             params = ", ".join(self.gen_param(p) for p in sub.params)
             self.emit(f"{ret} {sub.name}({params}) {{")
-
             self.ind += 1
             saved = self.current_function
             self.current_function = sub.name
             self.gen_block(sub.body, wrap=False)
             self.current_function = saved
             self.ind -= 1
-
             self.emit("}")
-            return
 
     # -------------------------
     def gen_param(self, p: Param):
@@ -120,18 +145,14 @@ class CppGenerator:
 
     # -------------------------
     def gen_stmt(self, s: Stmt):
-
         if isinstance(s, Block):
             self.gen_block(s)
             return
 
         if isinstance(s, Assign):
-
-            # return через fname := expr
             if isinstance(s.target, str) and s.target == self.current_function:
                 self.emit(f"return {self.gen_expr(s.expr)};")
                 return
-
             left = self.gen_assign_left(s.target)
             self.emit(f"{left} = {self.gen_expr(s.expr)};")
             return
@@ -169,7 +190,6 @@ class CppGenerator:
             else:
                 cond = f"{s.var} >= {end}"
                 inc = f"--{s.var}"
-
             self.emit(f"for ({s.var} = {start}; {cond}; {inc}) {{")
             self.ind += 1
             self.gen_stmt(s.body)
@@ -185,6 +205,26 @@ class CppGenerator:
             self.ind -= 1
             cond = self.gen_expr(s.until_cond)
             self.emit(f"}} while (!({cond}));")
+            return
+
+        if isinstance(s, Case):
+            self.emit(f"switch ({self.gen_expr(s.expr)}) {{")
+            self.ind += 1
+            for branch in s.branches:
+                for val in branch.values:
+                    self.emit(f"case {self.gen_expr(val)}:")
+                self.ind += 1
+                self.gen_stmt(branch.stmt)
+                self.emit("break;")
+                self.ind -= 1
+            if s.else_branch is not None:
+                self.emit("default:")
+                self.ind += 1
+                self.gen_stmt(s.else_branch)
+                self.emit("break;")
+                self.ind -= 1
+            self.ind -= 1
+            self.emit("}")
             return
 
         if isinstance(s, Writeln):
@@ -215,6 +255,8 @@ class CppGenerator:
     def gen_assign_left(self, target):
         if isinstance(target, str):
             return target
+        if isinstance(target, FieldAccess):
+            return f"{target.obj}.{target.field}"
         if isinstance(target, ArrayAccess):
             idx = "".join(f"[{self.gen_expr(i)}]" for i in target.indexes)
             return f"{target.name}{idx}"
@@ -233,6 +275,9 @@ class CppGenerator:
 
         if isinstance(e, Identifier):
             return e.name
+
+        if isinstance(e, FieldAccess):
+            return f"{e.obj}.{e.field}"
 
         if isinstance(e, ArrayAccess):
             idx = "".join(f"[{self.gen_expr(i)}]" for i in e.indexes)

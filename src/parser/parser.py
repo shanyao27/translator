@@ -38,6 +38,8 @@ class Parser:
         name = self.eat(TokType.IDENT).value
         self.eat(TokType.DELIM, ";")
 
+        const_decls = self.parse_consts()
+        type_decls = self.parse_type_decls()
         decls = self.parse_decls()
         subs = self.parse_subroutines()
 
@@ -47,7 +49,77 @@ class Parser:
         self.eat(TokType.DELIM, ".")
         self.eat(TokType.EOF)
 
-        return Program(name, decls, subs, body)
+        return Program(name, const_decls, type_decls, decls, subs, body)
+
+    # ======================================================
+    # CONST DECLARATIONS
+    # ======================================================
+    def parse_consts(self) -> List[ConstDecl]:
+        consts = []
+        if not self.match(TokType.KEYWORD, "const"):
+            return consts
+        self.eat(TokType.KEYWORD, "const")
+        while self.match(TokType.IDENT):
+            name = self.eat(TokType.IDENT).value
+            self.eat(TokType.OP, "=")
+
+            neg = False
+            if self.match(TokType.OP, "-"):
+                self.eat(TokType.OP, "-")
+                neg = True
+
+            tok = self.cur()
+            if tok.type == TokType.INT:
+                v = int(self.eat(TokType.INT).value)
+                val = Literal(-v if neg else v, "integer")
+            elif tok.type == TokType.REAL:
+                v = float(self.eat(TokType.REAL).value)
+                val = Literal(-v if neg else v, "real")
+            elif tok.type == TokType.STRING:
+                if neg:
+                    raise ParseError(5, "Унарный минус неприменим к строке", tok.line, tok.col)
+                val = Literal(self.eat(TokType.STRING).value, "string")
+            elif tok.type == TokType.CHAR:
+                if neg:
+                    raise ParseError(5, "Унарный минус неприменим к символу", tok.line, tok.col)
+                val = Literal(self.eat(TokType.CHAR).value, "char")
+            elif tok.type == TokType.BOOL:
+                if neg:
+                    raise ParseError(5, "Унарный минус неприменим к boolean", tok.line, tok.col)
+                val = Literal(self.eat(TokType.BOOL).value == "true", "boolean")
+            else:
+                raise ParseError(5, "Ожидалась константа", tok.line, tok.col)
+
+            self.eat(TokType.DELIM, ";")
+            consts.append(ConstDecl(name, val, val.lit_type))
+        return consts
+
+    # ======================================================
+    # TYPE DECLARATIONS
+    # ======================================================
+    def parse_type_decls(self) -> List[TypeDecl]:
+        type_decls = []
+        if not self.match(TokType.KEYWORD, "type"):
+            return type_decls
+        self.eat(TokType.KEYWORD, "type")
+        while self.match(TokType.IDENT):
+            name = self.eat(TokType.IDENT).value
+            self.eat(TokType.OP, "=")
+            if self.match(TokType.KEYWORD, "record"):
+                typ = self.parse_record_type()
+            else:
+                typ = self.parse_type()
+            self.eat(TokType.DELIM, ";")
+            type_decls.append(TypeDecl(name, typ))
+        return type_decls
+
+    def parse_record_type(self) -> RecordType:
+        self.eat(TokType.KEYWORD, "record")
+        fields = []
+        while not self.match(TokType.KEYWORD, "end"):
+            fields.append(self.parse_decl())
+        self.eat(TokType.KEYWORD, "end")
+        return RecordType(fields)
 
     # ======================================================
     # DECLARATIONS (var ...)
@@ -77,7 +149,7 @@ class Parser:
         return ids
 
     # ======================================================
-    # TYPE PARSER (simple + array)
+    # TYPE PARSER (simple + array + user-defined)
     # ======================================================
     def parse_type(self):
         if self.match(TokType.KEYWORD, "array"):
@@ -102,6 +174,10 @@ class Parser:
                 raise ParseError(5, "Ожидался базовый тип массива")
             base = self.eat(TokType.KEYWORD).value
             return ArrayType(ranges, base)
+
+        # user-defined type (record alias etc.)
+        if self.match(TokType.IDENT):
+            return self.eat(TokType.IDENT).value
 
         if not (self.match(TokType.KEYWORD) and self.cur().value in TYPE_KEYWORDS):
             raise ParseError(5, "Ожидался тип переменной")
@@ -202,6 +278,9 @@ class Parser:
         if self.match(TokType.KEYWORD, "repeat"):
             return self.parse_repeat()
 
+        if self.match(TokType.KEYWORD, "case"):
+            return self.parse_case()
+
         if self.match(TokType.KEYWORD, "writeln"):
             return self.parse_writeln()
 
@@ -210,6 +289,14 @@ class Parser:
 
         if self.match(TokType.IDENT):
             name = self.eat(TokType.IDENT).value
+
+            # field assignment: p.x := expr
+            if self.match(TokType.DELIM, "."):
+                self.eat(TokType.DELIM, ".")
+                fname = self.eat(TokType.IDENT).value
+                self.eat(TokType.OP, ":=")
+                expr = self.parse_expression()
+                return Assign(FieldAccess(name, fname), expr)
 
             # array assignment: a[i] := expr
             if self.match(TokType.DELIM, "["):
@@ -279,6 +366,34 @@ class Parser:
         self.eat(TokType.KEYWORD, "until")
         cond = self.parse_expression()
         return Repeat(body, cond)
+
+    def parse_case(self) -> Case:
+        self.eat(TokType.KEYWORD, "case")
+        expr = self.parse_expression()
+        self.eat(TokType.KEYWORD, "of")
+
+        branches = []
+        else_branch = None
+
+        while not (self.match(TokType.KEYWORD, "end") or self.match(TokType.KEYWORD, "else")):
+            values = [self.parse_expression()]
+            while self.match(TokType.DELIM, ","):
+                self.eat(TokType.DELIM, ",")
+                values.append(self.parse_expression())
+            self.eat(TokType.DELIM, ":")
+            stmt = self.parse_statement()
+            if self.match(TokType.DELIM, ";"):
+                self.eat(TokType.DELIM, ";")
+            branches.append(CaseBranch(values, stmt))
+
+        if self.match(TokType.KEYWORD, "else"):
+            self.eat(TokType.KEYWORD, "else")
+            else_branch = self.parse_statement()
+            if self.match(TokType.DELIM, ";"):
+                self.eat(TokType.DELIM, ";")
+
+        self.eat(TokType.KEYWORD, "end")
+        return Case(expr, branches, else_branch)
 
     def parse_writeln(self) -> Writeln:
         self.eat(TokType.KEYWORD, "writeln")
@@ -392,6 +507,12 @@ class Parser:
 
         if self.match(TokType.IDENT):
             name = self.eat(TokType.IDENT).value
+
+            # field access: p.field
+            if self.match(TokType.DELIM, "."):
+                self.eat(TokType.DELIM, ".")
+                fname = self.eat(TokType.IDENT).value
+                return FieldAccess(name, fname)
 
             if self.match(TokType.DELIM, "["):
                 return ArrayAccess(name, self.parse_array_indexes())

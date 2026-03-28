@@ -117,3 +117,30 @@ def test_strings():
     actual_cpp = run(pas)
 
     assert normalize(actual_cpp) == normalize(expected)
+
+
+def test_const():
+    pas = load("tests/const/const.pas")
+    expected = load("tests/const/const.cpp")
+
+    actual_cpp = run(pas)
+
+    assert normalize(actual_cpp) == normalize(expected)
+
+
+def test_case():
+    pas = load("tests/case/case.pas")
+    expected = load("tests/case/case.cpp")
+
+    actual_cpp = run(pas)
+
+    assert normalize(actual_cpp) == normalize(expected)
+
+
+def test_record():
+    pas = load("tests/record/record.pas")
+    expected = load("tests/record/record.cpp")
+
+    actual_cpp = run(pas)
+
+    assert normalize(actual_cpp) == normalize(expected)
