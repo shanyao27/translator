@@ -2,7 +2,7 @@
 #include <string>
 
 int main() {
-    std::cout << "ДЕД НИКИТЫ ВДОВА ЕЗДИТ НА ТИГРЕ В 1943 ГОДУ СМОТРЕТЬ ОНЛАЙН!!!!" << std::endl;
+    std::cout << "BINGO BANGO BONGO BISH BASH BOSH" << std::endl;
     
     return 0;
 }

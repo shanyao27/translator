@@ -175,7 +175,6 @@ class Parser:
             base = self.eat(TokType.KEYWORD).value
             return ArrayType(ranges, base)
 
-        # user-defined type (record alias etc.)
         if self.match(TokType.IDENT):
             return self.eat(TokType.IDENT).value
 
@@ -290,7 +289,6 @@ class Parser:
         if self.match(TokType.IDENT):
             name = self.eat(TokType.IDENT).value
 
-            # field assignment: p.x := expr
             if self.match(TokType.DELIM, "."):
                 self.eat(TokType.DELIM, ".")
                 fname = self.eat(TokType.IDENT).value
@@ -298,20 +296,17 @@ class Parser:
                 expr = self.parse_expression()
                 return Assign(FieldAccess(name, fname), expr)
 
-            # array assignment: a[i] := expr
             if self.match(TokType.DELIM, "["):
                 indexes = self.parse_array_indexes()
                 self.eat(TokType.OP, ":=")
                 expr = self.parse_expression()
                 return Assign(ArrayAccess(name, indexes), expr)
 
-            # assignment: x := expr
             if self.match(TokType.OP, ":="):
                 self.eat(TokType.OP, ":=")
                 expr = self.parse_expression()
                 return Assign(name, expr)
 
-            # call: foo(expr)
             if self.match(TokType.DELIM, "("):
                 args = self.parse_call_args()
                 return Call(name, args)
