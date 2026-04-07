@@ -42,12 +42,17 @@ class SemanticChecker:
 
         # SUBROUTINES
         for sub in prog.subroutines:
+            if isinstance(sub, MethodImpl):
+                continue
             if sub.name in self.subs:
                 raise SemanticError(4, f"Повторное объявление подпрограммы {sub.name}")
             self.subs[sub.name] = sub
 
         for sub in prog.subroutines:
-            self.check_subroutine(sub)
+            if isinstance(sub, MethodImpl):
+                self._check_method_impl(sub)
+            else:
+                self.check_subroutine(sub)
 
         self.check_block(prog.body)
 
@@ -57,8 +62,31 @@ class SemanticChecker:
     def _resolve_declared_type(self, typ):
         """Resolve a declared type: expand string type names to their definitions."""
         if isinstance(typ, str) and typ in self.types:
-            return self.types[typ]
+            resolved = self.types[typ]
+            if isinstance(resolved, ClassDecl):
+                return typ  # keep class types as their name string
+            return resolved
         return typ
+
+    # =================================================================
+    # METHOD IMPL
+    # =================================================================
+    def _check_method_impl(self, sub: MethodImpl):
+        local = {}
+        # add class fields to local scope
+        cls_typ = self.types.get(sub.class_name)
+        if isinstance(cls_typ, ClassDecl):
+            for field in cls_typ.fields:
+                for n in field.names:
+                    local[n] = field.typ
+        for p in sub.params:
+            local[p.name] = p.typ
+        saved = self.current_function
+        if sub.kind == "function":
+            self.current_function = sub.method_name
+            local[sub.method_name] = sub.ret_type
+        self.check_block(sub.body, local)
+        self.current_function = saved
 
     # =================================================================
     # SUBROUTINES
@@ -170,6 +198,9 @@ class SemanticChecker:
                     raise SemanticError(6, f"Идентификатор {name} не объявлен")
             return
 
+        if isinstance(s, MethodCall):
+            return  # валидация методов на уровне C++ компилятора
+
         if isinstance(s, Call):
             if s.name not in self.subs:
                 raise SemanticError(6, f"Подпрограмма {s.name} не объявлена")
@@ -260,6 +291,12 @@ class SemanticChecker:
                 raise SemanticError(7, "Несовместимые типы при сравнении")
 
             raise SemanticError(10, f"Неизвестный оператор {op}")
+
+        if isinstance(e, MethodCall):
+            return "object"
+
+        if isinstance(e, ObjectCreate):
+            return e.class_name
 
         if isinstance(e, Call):
             if e.name not in self.subs:

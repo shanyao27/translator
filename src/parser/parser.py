@@ -107,11 +107,43 @@ class Parser:
             self.eat(TokType.OP, "=")
             if self.match(TokType.KEYWORD, "record"):
                 typ = self.parse_record_type()
+            elif self.match(TokType.KEYWORD, "class"):
+                typ = self.parse_class_type()
             else:
                 typ = self.parse_type()
             self.eat(TokType.DELIM, ";")
             type_decls.append(TypeDecl(name, typ))
         return type_decls
+
+    def parse_class_type(self) -> "ClassDecl":
+        self.eat(TokType.KEYWORD, "class")
+        fields = []
+        methods = []
+        while not self.match(TokType.KEYWORD, "end"):
+            if self.match(TokType.KEYWORD, "constructor"):
+                self.eat(TokType.KEYWORD, "constructor")
+                name = self.eat(TokType.IDENT).value
+                params = self.parse_param_list_opt()
+                self.eat(TokType.DELIM, ";")
+                methods.append(MethodSignature("constructor", name, params, None))
+            elif self.match(TokType.KEYWORD, "procedure"):
+                self.eat(TokType.KEYWORD, "procedure")
+                name = self.eat(TokType.IDENT).value
+                params = self.parse_param_list_opt()
+                self.eat(TokType.DELIM, ";")
+                methods.append(MethodSignature("procedure", name, params, None))
+            elif self.match(TokType.KEYWORD, "function"):
+                self.eat(TokType.KEYWORD, "function")
+                name = self.eat(TokType.IDENT).value
+                params = self.parse_param_list_opt()
+                self.eat(TokType.DELIM, ":")
+                ret_type = self.eat(TokType.KEYWORD).value
+                self.eat(TokType.DELIM, ";")
+                methods.append(MethodSignature("function", name, params, ret_type))
+            else:
+                fields.append(self.parse_decl())
+        self.eat(TokType.KEYWORD, "end")
+        return ClassDecl(fields, methods)
 
     def parse_record_type(self) -> RecordType:
         self.eat(TokType.KEYWORD, "record")
@@ -130,7 +162,8 @@ class Parser:
             self.eat(TokType.KEYWORD, "var")
             while not (self.match(TokType.KEYWORD, "begin")
                        or self.match(TokType.KEYWORD, "procedure")
-                       or self.match(TokType.KEYWORD, "function")):
+                       or self.match(TokType.KEYWORD, "function")
+                       or self.match(TokType.KEYWORD, "constructor")):
                 decls.append(self.parse_decl())
         return decls
 
@@ -188,40 +221,46 @@ class Parser:
     # ======================================================
     def parse_subroutines(self) -> List[SubroutineDecl]:
         subs = []
-        while self.match(TokType.KEYWORD, "procedure") or self.match(TokType.KEYWORD, "function"):
-            if self.match(TokType.KEYWORD, "procedure"):
-                subs.append(self.parse_procedure())
-            else:
-                subs.append(self.parse_function())
+        while (self.match(TokType.KEYWORD, "procedure")
+               or self.match(TokType.KEYWORD, "function")
+               or self.match(TokType.KEYWORD, "constructor")):
+            kind = self.eat(TokType.KEYWORD).value
+            name = self.eat(TokType.IDENT).value
+
+            if self.match(TokType.DELIM, "."):
+                # method implementation: procedure ClassName.MethodName
+                self.eat(TokType.DELIM, ".")
+                method_name = self.eat(TokType.IDENT).value
+                params = self.parse_param_list_opt()
+                ret_type = None
+                if kind == "function":
+                    self.eat(TokType.DELIM, ":")
+                    ret_type = self.eat(TokType.KEYWORD).value
+                self.eat(TokType.DELIM, ";")
+                self.eat(TokType.KEYWORD, "begin")
+                body = self.parse_block_body()
+                self.eat(TokType.KEYWORD, "end")
+                self.eat(TokType.DELIM, ";")
+                subs.append(MethodImpl(name, method_name, kind, params, ret_type, body))
+            elif kind == "procedure":
+                params = self.parse_param_list_opt()
+                self.eat(TokType.DELIM, ";")
+                self.eat(TokType.KEYWORD, "begin")
+                body = self.parse_block_body()
+                self.eat(TokType.KEYWORD, "end")
+                self.eat(TokType.DELIM, ";")
+                subs.append(ProcedureDecl(name, params, body))
+            elif kind == "function":
+                params = self.parse_param_list_opt()
+                self.eat(TokType.DELIM, ":")
+                ret_type = self.eat(TokType.KEYWORD).value
+                self.eat(TokType.DELIM, ";")
+                self.eat(TokType.KEYWORD, "begin")
+                body = self.parse_block_body()
+                self.eat(TokType.KEYWORD, "end")
+                self.eat(TokType.DELIM, ";")
+                subs.append(FunctionDecl(name, params, ret_type, body))
         return subs
-
-    def parse_procedure(self) -> ProcedureDecl:
-        self.eat(TokType.KEYWORD, "procedure")
-        name = self.eat(TokType.IDENT).value
-        params = self.parse_param_list_opt()
-        self.eat(TokType.DELIM, ";")
-
-        self.eat(TokType.KEYWORD, "begin")
-        body = self.parse_block_body()
-        self.eat(TokType.KEYWORD, "end")
-        self.eat(TokType.DELIM, ";")
-
-        return ProcedureDecl(name, params, body)
-
-    def parse_function(self) -> FunctionDecl:
-        self.eat(TokType.KEYWORD, "function")
-        name = self.eat(TokType.IDENT).value
-        params = self.parse_param_list_opt()
-        self.eat(TokType.DELIM, ":")
-        ret_type = self.eat(TokType.KEYWORD).value
-        self.eat(TokType.DELIM, ";")
-
-        self.eat(TokType.KEYWORD, "begin")
-        body = self.parse_block_body()
-        self.eat(TokType.KEYWORD, "end")
-        self.eat(TokType.DELIM, ";")
-
-        return FunctionDecl(name, params, ret_type, body)
 
     def parse_param_list_opt(self) -> List[Param]:
         params = []
@@ -290,13 +329,21 @@ class Parser:
         if self.match(TokType.IDENT):
             name = self.eat(TokType.IDENT).value
 
-            # field assignment: p.x := expr
+            # obj.something
             if self.match(TokType.DELIM, "."):
                 self.eat(TokType.DELIM, ".")
                 fname = self.eat(TokType.IDENT).value
-                self.eat(TokType.OP, ":=")
-                expr = self.parse_expression()
-                return Assign(FieldAccess(name, fname), expr)
+                if self.match(TokType.DELIM, "("):
+                    # obj.method(args)
+                    args = self.parse_call_args()
+                    return MethodCall(name, fname, args)
+                if self.match(TokType.OP, ":="):
+                    # obj.field := expr
+                    self.eat(TokType.OP, ":=")
+                    expr = self.parse_expression()
+                    return Assign(FieldAccess(name, fname), expr)
+                # obj.method  (no-arg method call)
+                return MethodCall(name, fname, [])
 
             # array assignment: a[i] := expr
             if self.match(TokType.DELIM, "["):
@@ -311,7 +358,7 @@ class Parser:
                 expr = self.parse_expression()
                 return Assign(name, expr)
 
-            # call: foo(expr)
+            # call: foo(args)
             if self.match(TokType.DELIM, "("):
                 args = self.parse_call_args()
                 return Call(name, args)
@@ -508,10 +555,14 @@ class Parser:
         if self.match(TokType.IDENT):
             name = self.eat(TokType.IDENT).value
 
-            # field access: p.field
             if self.match(TokType.DELIM, "."):
                 self.eat(TokType.DELIM, ".")
                 fname = self.eat(TokType.IDENT).value
+                if self.match(TokType.DELIM, "("):
+                    args = self.parse_call_args()
+                    if fname == "create":
+                        return ObjectCreate(name, args)
+                    return MethodCall(name, fname, args)
                 return FieldAccess(name, fname)
 
             if self.match(TokType.DELIM, "["):

@@ -52,6 +52,9 @@ KEYWORDS = {
 
     # новое
     "const", "type", "record", "case",
+
+    # ООП
+    "class", "constructor",
 }
 
 TYPE_KEYWORDS = {"integer", "real", "char", "boolean", "string"}

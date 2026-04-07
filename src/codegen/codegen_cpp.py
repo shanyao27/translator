@@ -25,22 +25,34 @@ class CppGenerator:
         self.ind = 0
         self.lines = []
         self.current_function = None
+        self.class_names: set = set()
+        self.obj_vars: set = set()
 
     def emit(self, s=""):
         self.lines.append("    " * self.ind + s)
 
     def gen(self, prog: Program) -> str:
+        self.class_names = {
+            td.name for td in prog.type_decls if isinstance(td.typ, ClassDecl)
+        }
+        self.obj_vars = {
+            n
+            for d in prog.decls
+            if isinstance(d.typ, str) and d.typ in self.class_names
+            for n in d.names
+        }
+
         self.emit("#include <iostream>")
         self.emit("#include <string>")
         self.emit("")
 
-        # struct declarations
+        # type declarations (structs and classes)
         for td in prog.type_decls:
             self.gen_type_decl(td)
         if prog.type_decls:
             self.emit("")
 
-        # procedures and functions before main
+        # method implementations and regular subroutines
         for sub in prog.subroutines:
             self.gen_subroutine(sub)
             self.emit("")
@@ -71,7 +83,18 @@ class CppGenerator:
 
     # -------------------------
     def gen_type_decl(self, td: TypeDecl):
-        if isinstance(td.typ, RecordType):
+        if isinstance(td.typ, ClassDecl):
+            cls = td.typ
+            self.emit(f"class {td.name} {{")
+            self.emit("public:")
+            self.ind += 1
+            for field in cls.fields:
+                self.gen_decl(field)
+            for m in cls.methods:
+                self._emit_method_sig(td.name, m)
+            self.ind -= 1
+            self.emit("};")
+        elif isinstance(td.typ, RecordType):
             self.emit(f"struct {td.name} {{")
             self.ind += 1
             for field in td.typ.fields:
@@ -81,6 +104,16 @@ class CppGenerator:
         elif isinstance(td.typ, str):
             ctyp = TYPE_MAP.get(td.typ, td.typ)
             self.emit(f"using {td.name} = {ctyp};")
+
+    def _emit_method_sig(self, class_name: str, m: MethodSignature):
+        params = ", ".join(self._gen_param(p) for p in m.params)
+        if m.kind == "constructor":
+            self.emit(f"{class_name}({params});")
+        elif m.kind == "procedure":
+            self.emit(f"void {m.name}({params});")
+        else:
+            ret = TYPE_MAP.get(m.ret_type, m.ret_type)
+            self.emit(f"{ret} {m.name}({params});")
 
     # -------------------------
     def gen_const(self, c: ConstDecl):
@@ -92,9 +125,13 @@ class CppGenerator:
     def gen_decl(self, d: VarDecl):
         typ = d.typ
         if isinstance(typ, str):
-            ctyp = TYPE_MAP.get(typ, typ)  # fallback to name for user-defined types
-            names = ", ".join(d.names)
-            self.emit(f"{ctyp} {names};")
+            if typ in self.class_names:
+                for n in d.names:
+                    self.emit(f"{typ}* {n};")
+            else:
+                ctyp = TYPE_MAP.get(typ, typ)
+                names = ", ".join(d.names)
+                self.emit(f"{ctyp} {names};")
             return
 
         if isinstance(typ, ArrayType):
@@ -105,8 +142,26 @@ class CppGenerator:
 
     # -------------------------
     def gen_subroutine(self, sub):
+        if isinstance(sub, MethodImpl):
+            params = ", ".join(self._gen_param(p) for p in sub.params)
+            if sub.kind == "constructor":
+                self.emit(f"{sub.class_name}::{sub.class_name}({params}) {{")
+            elif sub.kind == "procedure":
+                self.emit(f"void {sub.class_name}::{sub.method_name}({params}) {{")
+            else:
+                ret = TYPE_MAP.get(sub.ret_type, sub.ret_type)
+                self.emit(f"{ret} {sub.class_name}::{sub.method_name}({params}) {{")
+            self.ind += 1
+            saved = self.current_function
+            self.current_function = sub.method_name
+            self.gen_block(sub.body, wrap=False)
+            self.current_function = saved
+            self.ind -= 1
+            self.emit("}")
+            return
+
         if isinstance(sub, ProcedureDecl):
-            params = ", ".join(self.gen_param(p) for p in sub.params)
+            params = ", ".join(self._gen_param(p) for p in sub.params)
             self.emit(f"void {sub.name}({params}) {{")
             self.ind += 1
             self.gen_block(sub.body, wrap=False)
@@ -116,7 +171,7 @@ class CppGenerator:
 
         if isinstance(sub, FunctionDecl):
             ret = TYPE_MAP[sub.ret_type]
-            params = ", ".join(self.gen_param(p) for p in sub.params)
+            params = ", ".join(self._gen_param(p) for p in sub.params)
             self.emit(f"{ret} {sub.name}({params}) {{")
             self.ind += 1
             saved = self.current_function
@@ -127,8 +182,11 @@ class CppGenerator:
             self.emit("}")
 
     # -------------------------
+    def _gen_param(self, p: Param):
+        return f"{TYPE_MAP.get(p.typ, p.typ)} {p.name}"
+
     def gen_param(self, p: Param):
-        return f"{TYPE_MAP[p.typ]} {p.name}"
+        return self._gen_param(p)
 
     # -------------------------
     def gen_block(self, b: Block, wrap=False):
@@ -249,6 +307,12 @@ class CppGenerator:
             self.emit(f"{s.name}({args});")
             return
 
+        if isinstance(s, MethodCall):
+            args = ", ".join(self.gen_expr(a) for a in s.args)
+            sep = "->" if s.obj in self.obj_vars else "."
+            self.emit(f"{s.obj}{sep}{s.method}({args});")
+            return
+
         raise RuntimeError("Unknown statement")
 
     # -------------------------
@@ -256,7 +320,8 @@ class CppGenerator:
         if isinstance(target, str):
             return target
         if isinstance(target, FieldAccess):
-            return f"{target.obj}.{target.field}"
+            sep = "->" if target.obj in self.obj_vars else "."
+            return f"{target.obj}{sep}{target.field}"
         if isinstance(target, ArrayAccess):
             idx = "".join(f"[{self.gen_expr(i)}]" for i in target.indexes)
             return f"{target.name}{idx}"
@@ -277,7 +342,8 @@ class CppGenerator:
             return e.name
 
         if isinstance(e, FieldAccess):
-            return f"{e.obj}.{e.field}"
+            sep = "->" if e.obj in self.obj_vars else "."
+            return f"{e.obj}{sep}{e.field}"
 
         if isinstance(e, ArrayAccess):
             idx = "".join(f"[{self.gen_expr(i)}]" for i in e.indexes)
@@ -294,5 +360,14 @@ class CppGenerator:
         if isinstance(e, Call):
             args = ", ".join(self.gen_expr(a) for a in e.args)
             return f"{e.name}({args})"
+
+        if isinstance(e, MethodCall):
+            args = ", ".join(self.gen_expr(a) for a in e.args)
+            sep = "->" if e.obj in self.obj_vars else "."
+            return f"{e.obj}{sep}{e.method}({args})"
+
+        if isinstance(e, ObjectCreate):
+            args = ", ".join(self.gen_expr(a) for a in e.args)
+            return f"new {e.class_name}({args})"
 
         raise RuntimeError("Unknown expression")

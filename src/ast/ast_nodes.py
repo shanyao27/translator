@@ -42,9 +42,23 @@ class ConstDecl:
 
 
 @dataclass
+class MethodSignature:
+    kind: str          # 'procedure' | 'function' | 'constructor'
+    name: str
+    params: List["Param"]
+    ret_type: Optional[str]
+
+
+@dataclass
+class ClassDecl:
+    fields: List["VarDecl"]
+    methods: List[MethodSignature]
+
+
+@dataclass
 class TypeDecl:
     name: str
-    typ: Union[str, RecordType]
+    typ: Union[str, RecordType, ClassDecl]
 
 
 # ================= SUBROUTINES ===================
@@ -71,6 +85,16 @@ class FunctionDecl(SubroutineDecl):
     name: str
     params: List[Param]
     ret_type: str
+    body: "Block"
+
+
+@dataclass
+class MethodImpl(SubroutineDecl):
+    class_name: str
+    method_name: str
+    kind: str          # 'procedure' | 'function' | 'constructor'
+    params: List[Param]
+    ret_type: Optional[str]
     body: "Block"
 
 
@@ -128,6 +152,19 @@ class Readln(Stmt):
 @dataclass
 class Call(Stmt, Expr):
     name: str
+    args: List["Expr"]
+
+
+@dataclass
+class MethodCall(Stmt, Expr):
+    obj: str
+    method: str
+    args: List["Expr"]
+
+
+@dataclass
+class ObjectCreate(Expr):
+    class_name: str
     args: List["Expr"]
 
 
