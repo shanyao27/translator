@@ -1,46 +1,51 @@
 from __future__ import annotations
-from typing import Dict
+from typing import Dict, Union
 from src.ast.ast_nodes import *
 from src.errors import SemanticError
+from src.visitors.visitor import ASTVisitor
+
+from src.ast.ast_nodes import (
+    Program, ConstDecl, TypeDecl, VarDecl, RecordType, ArrayType,
+    Param, ProcedureDecl, FunctionDecl, Block, Assign, If, While,
+    For, Repeat, Case, CaseBranch, Writeln, Readln, Call,
+    Literal, Identifier, FieldAccess, ArrayAccess, UnaryOp, BinaryOp,
+    SubroutineDecl, Expr, Stmt
+)
 
 NUMERIC = {"integer", "real"}
 BOOL = {"boolean"}
 CHAR = {"char"}
 STRING = {"string"}
 
-
-class SemanticChecker:
+class SemanticChecker(ASTVisitor):
     def __init__(self):
         self.sym: Dict[str, Union[str, ArrayType, RecordType]] = {}
         self.subs: Dict[str, SubroutineDecl] = {}
         self.consts: Dict[str, str] = {}
         self.types: Dict[str, Union[str, RecordType]] = {}
         self.current_function: str | None = None
+        self.local_vars: Dict[str, str] = {}
 
     # =================================================================
     # MAIN ENTRY
     # =================================================================
     def check(self, prog: Program):
-        # CONSTANTS
+        prog.accept(self)
+
+    # =================================================================
+    # VISITOR METHODS
+    # =================================================================
+    
+    def visit_program(self, prog: Program):
         for c in prog.const_decls:
-            if c.name in self.sym or c.name in self.consts:
-                raise SemanticError(4, f"Повторное объявление {c.name}")
-            self.consts[c.name] = c.typ
-
-        # TYPE DECLARATIONS
+            c.accept(self)
+        
         for td in prog.type_decls:
-            if td.name in self.types:
-                raise SemanticError(4, f"Повторное объявление типа {td.name}")
-            self.types[td.name] = td.typ
-
-        # GLOBAL VARS
+            td.accept(self)
+        
         for d in prog.decls:
-            for name in d.names:
-                if name in self.sym:
-                    raise SemanticError(4, f"Повторное объявление {name}")
-                self.sym[name] = self._resolve_declared_type(d.typ)
-
-        # SUBROUTINES
+            d.accept(self)
+        
         for sub in prog.subroutines:
             if isinstance(sub, MethodImpl):
                 continue
@@ -68,6 +73,8 @@ class SemanticChecker:
             return resolved
         return typ
 
+        raise SemanticError(10, f"Неизвестный оператор {op}")
+    
     # =================================================================
     # METHOD IMPL
     # =================================================================
@@ -91,20 +98,29 @@ class SemanticChecker:
     # =================================================================
     # SUBROUTINES
     # =================================================================
-    def check_subroutine(self, sub: SubroutineDecl):
+    
+    def _check_subroutine(self, sub: SubroutineDecl):
+        if not isinstance(sub, (ProcedureDecl, FunctionDecl)):
+            raise SemanticError(7, "Ошибка в объявлении подпрограммы")
+        
         local = {}
         for p in sub.params:
             if p.name in local:
                 raise SemanticError(4, f"Повтор параметра {p.name}")
             local[p.name] = p.typ
-
+        
         saved = self.current_function
+        saved_local = self.local_vars
+        
         if isinstance(sub, FunctionDecl):
             self.current_function = sub.name
             local[sub.name] = sub.ret_type
-
-        self.check_block(sub.body, local)
+        
+        self.local_vars = local
+        sub.body.accept(self)
+        
         self.current_function = saved
+
 
     # =================================================================
     # BLOCK CHECK
@@ -320,31 +336,37 @@ class SemanticChecker:
     def resolve_type(self, name: str, local) -> str | ArrayType | RecordType:
         if name in local:
             t = local[name]
+        self.local_vars = saved_local
+    
+    def _check_expr(self, e: Expr) -> str:
+        return e.accept(self)
+    
+    def _resolve_declared_type(self, typ):
+        if isinstance(typ, str) and typ in self.types:
+            return self.types[typ]
+        return typ
+    
+    def _resolve_type(self, name: str):
+        if name in self.local_vars:
+            t = self.local_vars[name]
+
             return self._resolve_declared_type(t)
         if name in self.sym:
             return self.sym[name]
         if name in self.consts:
             return self.consts[name]
         raise SemanticError(6, f"Идентификатор '{name}' не объявлен")
-
-    def resolve_var(self, target, local):
+    
+    def _resolve_var(self, target):
         if isinstance(target, str):
-            return self.resolve_type(target, local)
+            return self._resolve_type(target)
         if isinstance(target, FieldAccess):
-            obj_type = self.resolve_type(target.obj, local)
-            rec = self._as_record(target.obj, obj_type)
-            for field_decl in rec.fields:
-                if target.field in field_decl.names:
-                    return field_decl.typ if isinstance(field_decl.typ, str) else "record"
-            raise SemanticError(6, f"Поле '{target.field}' не найдено")
+            return target.accept(self)
         if isinstance(target, ArrayAccess):
-            typ = self.resolve_type(target.name, local)
-            if not isinstance(typ, ArrayType):
-                raise SemanticError(7, f"{target.name} не является массивом")
-            return typ.base_type
+            return target.accept(self)
         raise SemanticError(7, "Неверная левая часть присваивания")
-
-    def _as_record(self, name: str, typ) -> RecordType:
+    
+    def _as_record(self, name: str, typ):
         if isinstance(typ, RecordType):
             return typ
         if isinstance(typ, str) and typ in self.types:
@@ -352,8 +374,8 @@ class SemanticChecker:
             if isinstance(t, RecordType):
                 return t
         raise SemanticError(7, f"'{name}' не является записью (record)")
-
-    def assignable(self, left, right) -> bool:
+    
+    def _assignable(self, left, right) -> bool:
         if left == right:
             return True
         if left == "real" and right == "integer":

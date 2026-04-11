@@ -208,7 +208,6 @@ class Parser:
             base = self.eat(TokType.KEYWORD).value
             return ArrayType(ranges, base)
 
-        # user-defined type (record alias etc.)
         if self.match(TokType.IDENT):
             return self.eat(TokType.IDENT).value
 
@@ -345,14 +344,12 @@ class Parser:
                 # obj.method  (no-arg method call)
                 return MethodCall(name, fname, [])
 
-            # array assignment: a[i] := expr
             if self.match(TokType.DELIM, "["):
                 indexes = self.parse_array_indexes()
                 self.eat(TokType.OP, ":=")
                 expr = self.parse_expression()
                 return Assign(ArrayAccess(name, indexes), expr)
 
-            # assignment: x := expr
             if self.match(TokType.OP, ":="):
                 self.eat(TokType.OP, ":=")
                 expr = self.parse_expression()

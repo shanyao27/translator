@@ -42,7 +42,6 @@ class Lexer:
 
             start_line, start_col = self.line, self.col
 
-            # identifiers / keywords
             if ch.isalpha():
                 buf = []
                 while self._peek().isalnum() or self._peek() == "_":
@@ -58,7 +57,6 @@ class Lexer:
                     tokens.append(Token(TokType.IDENT, word, start_line, start_col))
                 continue
 
-            # numbers
             if ch.isdigit():
                 buf = []
                 while self._peek().isdigit():
@@ -73,7 +71,6 @@ class Lexer:
                     tokens.append(Token(TokType.INT, "".join(buf), start_line, start_col))
                 continue
 
-            # string / char
             if ch == "'":
                 self._advance()
                 buf = []
@@ -89,20 +86,17 @@ class Lexer:
                     tokens.append(Token(TokType.STRING, s, start_line, start_col))
                 continue
 
-            # multi-ops
             two = ch + self._peek(1)
             if two in MULTI_OPS:
                 self._advance(); self._advance()
                 tokens.append(Token(TokType.OP, two, start_line, start_col))
                 continue
 
-            # operators
             if ch in SINGLE_OPS:
                 self._advance()
                 tokens.append(Token(TokType.OP, ch, start_line, start_col))
                 continue
 
-            # delimiters
             if ch in DELIMS:
                 self._advance()
                 tokens.append(Token(TokType.DELIM, ch, start_line, start_col))

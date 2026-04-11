@@ -1,26 +1,9 @@
-from __future__ import annotations
+from src.visitors.visitor import ASTVisitor
 from src.ast.ast_nodes import *
-
-TYPE_MAP = {
-    "integer": "int",
-    "real": "float",
-    "char": "char",
-    "boolean": "bool",
-    "string": "std::string",
-}
-
-OP_MAP = {
-    ":=": "=",
-    "mod": "%",
-    "and": "&&",
-    "or": "||",
-    "not": "!",
-    "=": "==",
-    "<>": "!=",
-}
+from typing import Union, List
 
 
-class CppGenerator:
+class CppGenerator(ASTVisitor):
     def __init__(self):
         self.ind = 0
         self.lines = []
