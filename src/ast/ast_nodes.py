@@ -55,12 +55,24 @@ class ConstDecl(ASTNode):
         return visitor.visit_const_decl(self)
 
 @dataclass
-class TypeDecl(ASTNode):
+class MethodSignature:
+    kind: str          # 'procedure' | 'function' | 'constructor'
     name: str
-    typ: Union[str, RecordType]
-    
-    def accept(self, visitor):
-        return visitor.visit_type_decl(self)
+    params: List["Param"]
+    ret_type: Optional[str]
+
+
+@dataclass
+class ClassDecl:
+    fields: List["VarDecl"]
+    methods: List[MethodSignature]
+
+
+@dataclass
+class TypeDecl:
+    name: str
+    typ: Union[str, RecordType, ClassDecl]
+
 
 # ================= SUBROUTINES ===================
 
@@ -93,6 +105,16 @@ class FunctionDecl(SubroutineDecl):
     
     def accept(self, visitor):
         return visitor.visit_function_decl(self)
+
+@dataclass
+class MethodImpl(SubroutineDecl):
+    class_name: str
+    method_name: str
+    kind: str          # 'procedure' | 'function' | 'constructor'
+    params: List[Param]
+    ret_type: Optional[str]
+    body: "Block"
+
 
 # ================= STATEMENTS ===================
 
@@ -170,7 +192,20 @@ class Call(Stmt, Expr):
         return visitor.visit_call(self)
 
 @dataclass
-class CaseBranch(ASTNode):
+class MethodCall(Stmt, Expr):
+    obj: str
+    method: str
+    args: List["Expr"]
+
+
+@dataclass
+class ObjectCreate(Expr):
+    class_name: str
+    args: List["Expr"]
+
+
+@dataclass
+class CaseBranch:
     values: List["Expr"]
     stmt: Stmt
     

@@ -5,292 +5,352 @@ from typing import Union, List
 
 class CppGenerator(ASTVisitor):
     def __init__(self):
-        self.indent_level = 0
-        self.output = []
-    
+        self.ind = 0
+        self.lines = []
+        self.current_function = None
+        self.class_names: set = set()
+        self.obj_vars: set = set()
+
+    def emit(self, s=""):
+        self.lines.append("    " * self.ind + s)
+
     def gen(self, prog: Program) -> str:
-        return prog.accept(self)
-    
-    def indent(self):
-        return "    " * self.indent_level
-    
-    def visit_program(self, node: Program) -> str:
-        self.output.append(f"#include <iostream>")
-        self.output.append(f"#include <string>")
-        self.output.append(f"#include <array>")
-        self.output.append(f"#include <cmath>")
-        self.output.append(f"")
-        self.output.append(f"using namespace std;")
-        self.output.append(f"")
-        
-        for const_decl in node.const_decls:
-            const_decl.accept(self)
-        
-        for type_decl in node.type_decls:
-            type_decl.accept(self)
-        
-        for var_decl in node.decls:
-            var_decl.accept(self)
-        
-        for sub in node.subroutines:
-            sub.accept(self)
-        
-        self.output.append(f"int main() {{")
-        self.indent_level += 1
-        node.body.accept(self)
-        self.indent_level -= 1
-        self.output.append(f"    return 0;")
-        self.output.append(f"}}")
-        
-        return "\n".join(self.output)
-    
-    def visit_const_decl(self, node: ConstDecl):
-        cpp_type = self._map_type(node.typ)
-        value = self._format_literal(node.value)
-        self.output.append(f"const {cpp_type} {node.name} = {value};")
-    
-    def visit_var_decl(self, node: VarDecl):
-        cpp_type = self._map_type(node.typ)
-        for name in node.names:
-            self.output.append(f"{cpp_type} {name};")
-    
-    def visit_type_decl(self, node: TypeDecl):
-        if isinstance(node.typ, RecordType):
-            self.output.append(f"struct {node.name} {{")
-            self.indent_level += 1
-            node.typ.accept(self)
-            self.indent_level -= 1
-            self.output.append(f"}};")
-            self.output.append(f"")
-    
-    def visit_record_type(self, node: RecordType):
-        for field in node.fields:
-            field.accept(self)
-    
-    def visit_array_type(self, node: ArrayType):
-        pass  
-    
-    def visit_param(self, node: Param):
-        pass 
-    
-    def visit_case_branch(self, node: CaseBranch):
-        pass 
-    
-    def visit_procedure_decl(self, node: ProcedureDecl):
-        params = self._format_params(node.params)
-        self.output.append(f"void {node.name}({params}) {{")
-        self.indent_level += 1
-        node.body.accept(self)
-        self.indent_level -= 1
-        self.output.append(f"}}")
-        self.output.append(f"")
-    
-    def visit_function_decl(self, node: FunctionDecl):
-        params = self._format_params(node.params)
-        ret_type = self._map_type(node.ret_type)
-        self.output.append(f"{ret_type} {node.name}({params}) {{")
-        self.indent_level += 1
-        node.body.accept(self)
-        self.indent_level -= 1
-        self.output.append(f"}}")
-        self.output.append(f"")
-    
-    def visit_block(self, node: Block):
-        for stmt in node.statements:
-            stmt.accept(self)
-    
-    def visit_assign(self, node: Assign):
-        target = self._format_target(node.target)
-        expr = node.expr.accept(self)
-        self.output.append(f"{self.indent()}{target} = {expr};")
-    
-    def visit_if(self, node: If):
-        cond = node.cond.accept(self)
-        self.output.append(f"{self.indent()}if ({cond}) {{")
-        self.indent_level += 1
-        node.then_branch.accept(self)
-        self.indent_level -= 1
-        if node.else_branch:
-            self.output.append(f"{self.indent()}}} else {{")
-            self.indent_level += 1
-            node.else_branch.accept(self)
-            self.indent_level -= 1
-        self.output.append(f"{self.indent()}}}")
-    
-    def visit_while(self, node: While):
-        cond = node.cond.accept(self)
-        self.output.append(f"{self.indent()}while ({cond}) {{")
-        self.indent_level += 1
-        node.body.accept(self)
-        self.indent_level -= 1
-        self.output.append(f"{self.indent()}}}")
-    
-    def visit_for(self, node: For):
-        start = node.start.accept(self)
-        end = node.end.accept(self)
-        
-        if node.direction == "to":
-            self.output.append(f"{self.indent()}for (int {node.var} = {start}; {node.var} <= {end}; {node.var}++) {{")
-        else:
-            self.output.append(f"{self.indent()}for (int {node.var} = {start}; {node.var} >= {end}; {node.var}--) {{")
-        
-        self.indent_level += 1
-        node.body.accept(self)
-        self.indent_level -= 1
-        self.output.append(f"{self.indent()}}}")
-    
-    def visit_repeat(self, node: Repeat):
-        self.output.append(f"{self.indent()}do {{")
-        self.indent_level += 1
-        for stmt in node.body:
-            stmt.accept(self)
-        self.indent_level -= 1
-        cond = node.until_cond.accept(self)
-        self.output.append(f"{self.indent()}}} while (!({cond}));")
-    
-    def visit_case(self, node: Case):
-        expr = node.expr.accept(self)
-        self.output.append(f"{self.indent()}switch ({expr}) {{")
-        
-        for branch in node.branches:
-            for val in branch.values:
-                val_expr = val.accept(self)
-                self.output.append(f"{self.indent()}    case {val_expr}:")
-                self.indent_level += 1
-                branch.stmt.accept(self)
-                self.output.append(f"{self.indent()}    break;")
-                self.indent_level -= 1
-        
-        if node.else_branch:
-            self.output.append(f"{self.indent()}    default:")
-            self.indent_level += 1
-            node.else_branch.accept(self)
-            self.output.append(f"{self.indent()}    break;")
-            self.indent_level -= 1
-        
-        self.output.append(f"{self.indent()}}}")
-    
-    def visit_writeln(self, node: Writeln):
-        args = [arg.accept(self) for arg in node.args]
-        if args:
-            self.output.append(f'{self.indent()}cout << {" << ".join(args)} << endl;')
-        else:
-            self.output.append(f'{self.indent()}cout << endl;')
-    
-    def visit_readln(self, node: Readln):
-        reads = []
-        for name in node.args:
-            reads.append(f'cin >> {name}')
-        self.output.append(f'{self.indent()}{"; ".join(reads)};')
-    
-    def visit_call(self, node: Call) -> str:
-        args = [arg.accept(self) for arg in node.args]
-        return f"{node.name}({', '.join(args)})"
-    
-    def visit_literal(self, node: Literal) -> str:
-        if node.lit_type == "string":
-            return f'"{node.value}"'
-        elif node.lit_type == "char":
-            return f"'{node.value}'"
-        elif node.lit_type == "boolean":
-            return "true" if node.value else "false"
-        else:
-            return str(node.value)
-    
-    def visit_identifier(self, node: Identifier) -> str:
-        return node.name
-    
-    def visit_field_access(self, node: FieldAccess) -> str:
-        return f"{node.obj}.{node.field}"
-    
-    def visit_array_access(self, node: ArrayAccess) -> str:
-        indexes = [idx.accept(self) for idx in node.indexes]
-        if len(indexes) == 1:
-            return f"{node.name}[{indexes[0]}]"
-        else:
-            return f"{node.name}[{']['.join(indexes)}]"
-    
-    def visit_unary_op(self, node: UnaryOp) -> str:
-        operand = node.operand.accept(self)
-        if node.op == "not":
-            return f"!{operand}"
-        else:
-            return f"{node.op}{operand}"
-    
-    def visit_binary_op(self, node: BinaryOp) -> str:
-        left = node.left.accept(self)
-        right = node.right.accept(self)
-        
-        op_map = {
-            "mod": "%",
-            "and": "&&",
-            "or": "||",
-            "=": "==",
-            "<>": "!="
+        self.class_names = {
+            td.name for td in prog.type_decls if isinstance(td.typ, ClassDecl)
         }
-        
-        op = op_map.get(node.op, node.op)
-        return f"({left} {op} {right})"
-    
-    def _map_type(self, pascal_type: Union[str, ArrayType, RecordType]) -> str:
-        """Преобразование Pascal типа в C++ тип"""
-  
-        if isinstance(pascal_type, ArrayType):
-            return self._map_array_type(pascal_type)
-        
-        if isinstance(pascal_type, RecordType):
-            return "auto"
-        
-        if isinstance(pascal_type, str):
-            type_map = {
-                "integer": "int",
-                "real": "double",
-                "char": "char",
-                "boolean": "bool",
-                "string": "string"
-            }
-            return type_map.get(pascal_type, "auto")
-        
-        return "auto"
-    
-    def _map_array_type(self, array_type: ArrayType) -> str:
-        """Преобразование ArrayType в C++ тип"""
-        base_type = self._map_type(array_type.base_type)
-        
-        dims = []
-        for low, high in array_type.ranges:
-            dims.append(f"{high - low + 1}")
-        
-        if len(dims) == 1:
-            return f"array<{base_type}, {dims[0]}>"
+        self.obj_vars = {
+            n
+            for d in prog.decls
+            if isinstance(d.typ, str) and d.typ in self.class_names
+            for n in d.names
+        }
+
+        self.emit("#include <iostream>")
+        self.emit("#include <string>")
+        self.emit("")
+
+        # type declarations (structs and classes)
+        for td in prog.type_decls:
+            self.gen_type_decl(td)
+        if prog.type_decls:
+            self.emit("")
+
+        # method implementations and regular subroutines
+        for sub in prog.subroutines:
+            self.gen_subroutine(sub)
+            self.emit("")
+
+        # MAIN
+        self.emit("int main() {")
+        self.ind += 1
+
+        # constants
+        for c in prog.const_decls:
+            self.gen_const(c)
+        if prog.const_decls:
+            self.emit("")
+
+        # global variables
+        for d in prog.decls:
+            self.gen_decl(d)
+        if prog.decls:
+            self.emit("")
+
+        self.gen_block(prog.body, wrap=False)
+
+        self.emit("return 0;")
+        self.ind -= 1
+        self.emit("}")
+
+        return "\n".join(self.lines)
+
+    # -------------------------
+    def gen_type_decl(self, td: TypeDecl):
+        if isinstance(td.typ, ClassDecl):
+            cls = td.typ
+            self.emit(f"class {td.name} {{")
+            self.emit("public:")
+            self.ind += 1
+            for field in cls.fields:
+                self.gen_decl(field)
+            for m in cls.methods:
+                self._emit_method_sig(td.name, m)
+            self.ind -= 1
+            self.emit("};")
+        elif isinstance(td.typ, RecordType):
+            self.emit(f"struct {td.name} {{")
+            self.ind += 1
+            for field in td.typ.fields:
+                self.gen_decl(field)
+            self.ind -= 1
+            self.emit("};")
+        elif isinstance(td.typ, str):
+            ctyp = TYPE_MAP.get(td.typ, td.typ)
+            self.emit(f"using {td.name} = {ctyp};")
+
+    def _emit_method_sig(self, class_name: str, m: MethodSignature):
+        params = ", ".join(self._gen_param(p) for p in m.params)
+        if m.kind == "constructor":
+            self.emit(f"{class_name}({params});")
+        elif m.kind == "procedure":
+            self.emit(f"void {m.name}({params});")
         else:
-            result = f"array<{base_type}, {dims[-1]}>"
-            for dim in reversed(dims[:-1]):
-                result = f"array<{result}, {dim}>"
-            return result
-    
-    def _format_literal(self, literal: Literal) -> str:
-        if literal.lit_type == "string":
-            return f'"{literal.value}"'
-        elif literal.lit_type == "char":
-            return f"'{literal.value}'"
-        elif literal.lit_type == "boolean":
-            return "true" if literal.value else "false"
-        else:
-            return str(literal.value)
-    
-    def _format_params(self, params: List[Param]) -> str:
-        param_strs = []
-        for param in params:
-            cpp_type = self._map_type(param.typ)
-            param_strs.append(f"{cpp_type} {param.name}")
-        return ", ".join(param_strs)
-    
-    def _format_target(self, target):
+            ret = TYPE_MAP.get(m.ret_type, m.ret_type)
+            self.emit(f"{ret} {m.name}({params});")
+
+    # -------------------------
+    def gen_const(self, c: ConstDecl):
+        ctyp = TYPE_MAP.get(c.typ, c.typ)
+        val = self.gen_expr(c.value)
+        self.emit(f"const {ctyp} {c.name} = {val};")
+
+    # -------------------------
+    def gen_decl(self, d: VarDecl):
+        typ = d.typ
+        if isinstance(typ, str):
+            if typ in self.class_names:
+                for n in d.names:
+                    self.emit(f"{typ}* {n};")
+            else:
+                ctyp = TYPE_MAP.get(typ, typ)
+                names = ", ".join(d.names)
+                self.emit(f"{ctyp} {names};")
+            return
+
+        if isinstance(typ, ArrayType):
+            base = TYPE_MAP[typ.base_type]
+            dims = "".join(f"[{h - l + 1}]" for (l, h) in typ.ranges)
+            for n in d.names:
+                self.emit(f"{base} {n}{dims};")
+
+    # -------------------------
+    def gen_subroutine(self, sub):
+        if isinstance(sub, MethodImpl):
+            params = ", ".join(self._gen_param(p) for p in sub.params)
+            if sub.kind == "constructor":
+                self.emit(f"{sub.class_name}::{sub.class_name}({params}) {{")
+            elif sub.kind == "procedure":
+                self.emit(f"void {sub.class_name}::{sub.method_name}({params}) {{")
+            else:
+                ret = TYPE_MAP.get(sub.ret_type, sub.ret_type)
+                self.emit(f"{ret} {sub.class_name}::{sub.method_name}({params}) {{")
+            self.ind += 1
+            saved = self.current_function
+            self.current_function = sub.method_name
+            self.gen_block(sub.body, wrap=False)
+            self.current_function = saved
+            self.ind -= 1
+            self.emit("}")
+            return
+
+        if isinstance(sub, ProcedureDecl):
+            params = ", ".join(self._gen_param(p) for p in sub.params)
+            self.emit(f"void {sub.name}({params}) {{")
+            self.ind += 1
+            self.gen_block(sub.body, wrap=False)
+            self.ind -= 1
+            self.emit("}")
+            return
+
+        if isinstance(sub, FunctionDecl):
+            ret = TYPE_MAP[sub.ret_type]
+            params = ", ".join(self._gen_param(p) for p in sub.params)
+            self.emit(f"{ret} {sub.name}({params}) {{")
+            self.ind += 1
+            saved = self.current_function
+            self.current_function = sub.name
+            self.gen_block(sub.body, wrap=False)
+            self.current_function = saved
+            self.ind -= 1
+            self.emit("}")
+
+    # -------------------------
+    def _gen_param(self, p: Param):
+        return f"{TYPE_MAP.get(p.typ, p.typ)} {p.name}"
+
+    def gen_param(self, p: Param):
+        return self._gen_param(p)
+
+    # -------------------------
+    def gen_block(self, b: Block, wrap=False):
+        if wrap:
+            self.emit("{")
+            self.ind += 1
+
+        for s in b.statements:
+            self.gen_stmt(s)
+
+        if wrap:
+            self.ind -= 1
+            self.emit("}")
+
+    # -------------------------
+    def gen_stmt(self, s: Stmt):
+        if isinstance(s, Block):
+            self.gen_block(s)
+            return
+
+        if isinstance(s, Assign):
+            if isinstance(s.target, str) and s.target == self.current_function:
+                self.emit(f"return {self.gen_expr(s.expr)};")
+                return
+            left = self.gen_assign_left(s.target)
+            self.emit(f"{left} = {self.gen_expr(s.expr)};")
+            return
+
+        if isinstance(s, If):
+            cond = self.gen_expr(s.cond)
+            self.emit(f"if ({cond}) {{")
+            self.ind += 1
+            self.gen_stmt(s.then_branch)
+            self.ind -= 1
+            self.emit("}")
+            if s.else_branch is not None:
+                self.emit("else {")
+                self.ind += 1
+                self.gen_stmt(s.else_branch)
+                self.ind -= 1
+                self.emit("}")
+            return
+
+        if isinstance(s, While):
+            cond = self.gen_expr(s.cond)
+            self.emit(f"while ({cond}) {{")
+            self.ind += 1
+            self.gen_stmt(s.body)
+            self.ind -= 1
+            self.emit("}")
+            return
+
+        if isinstance(s, For):
+            start = self.gen_expr(s.start)
+            end = self.gen_expr(s.end)
+            if s.direction == "to":
+                cond = f"{s.var} <= {end}"
+                inc = f"++{s.var}"
+            else:
+                cond = f"{s.var} >= {end}"
+                inc = f"--{s.var}"
+            self.emit(f"for ({s.var} = {start}; {cond}; {inc}) {{")
+            self.ind += 1
+            self.gen_stmt(s.body)
+            self.ind -= 1
+            self.emit("}")
+            return
+
+        if isinstance(s, Repeat):
+            self.emit("do {")
+            self.ind += 1
+            for st in s.body:
+                self.gen_stmt(st)
+            self.ind -= 1
+            cond = self.gen_expr(s.until_cond)
+            self.emit(f"}} while (!({cond}));")
+            return
+
+        if isinstance(s, Case):
+            self.emit(f"switch ({self.gen_expr(s.expr)}) {{")
+            self.ind += 1
+            for branch in s.branches:
+                for val in branch.values:
+                    self.emit(f"case {self.gen_expr(val)}:")
+                self.ind += 1
+                self.gen_stmt(branch.stmt)
+                self.emit("break;")
+                self.ind -= 1
+            if s.else_branch is not None:
+                self.emit("default:")
+                self.ind += 1
+                self.gen_stmt(s.else_branch)
+                self.emit("break;")
+                self.ind -= 1
+            self.ind -= 1
+            self.emit("}")
+            return
+
+        if isinstance(s, Writeln):
+            if not s.args:
+                self.emit("std::cout << std::endl;")
+            else:
+                parts = []
+                for i, a in enumerate(s.args):
+                    if i > 0:
+                        parts.append('" "')
+                    parts.append(self.gen_expr(a))
+                self.emit(f"std::cout << {' << '.join(parts)} << std::endl;")
+            return
+
+        if isinstance(s, Readln):
+            chain = " >> ".join(s.args)
+            self.emit(f"std::cin >> {chain};")
+            return
+
+        if isinstance(s, Call):
+            args = ", ".join(self.gen_expr(a) for a in s.args)
+            self.emit(f"{s.name}({args});")
+            return
+
+        if isinstance(s, MethodCall):
+            args = ", ".join(self.gen_expr(a) for a in s.args)
+            sep = "->" if s.obj in self.obj_vars else "."
+            self.emit(f"{s.obj}{sep}{s.method}({args});")
+            return
+
+        raise RuntimeError("Unknown statement")
+
+    # -------------------------
+    def gen_assign_left(self, target):
         if isinstance(target, str):
             return target
-        elif isinstance(target, FieldAccess):
-            return target.accept(self)
-        elif isinstance(target, ArrayAccess):
-            return target.accept(self)
-        return str(target)
+        if isinstance(target, FieldAccess):
+            sep = "->" if target.obj in self.obj_vars else "."
+            return f"{target.obj}{sep}{target.field}"
+        if isinstance(target, ArrayAccess):
+            idx = "".join(f"[{self.gen_expr(i)}]" for i in target.indexes)
+            return f"{target.name}{idx}"
+        raise RuntimeError("Invalid assignment target")
+
+    # -------------------------
+    def gen_expr(self, e: Expr):
+        if isinstance(e, Literal):
+            if e.lit_type == "string":
+                return f"\"{e.value}\""
+            if e.lit_type == "char":
+                return f"'{e.value}'"
+            if e.lit_type == "boolean":
+                return "true" if e.value else "false"
+            return str(e.value)
+
+        if isinstance(e, Identifier):
+            return e.name
+
+        if isinstance(e, FieldAccess):
+            sep = "->" if e.obj in self.obj_vars else "."
+            return f"{e.obj}{sep}{e.field}"
+
+        if isinstance(e, ArrayAccess):
+            idx = "".join(f"[{self.gen_expr(i)}]" for i in e.indexes)
+            return f"{e.name}{idx}"
+
+        if isinstance(e, UnaryOp):
+            op = OP_MAP.get(e.op, e.op)
+            return f"({op}{self.gen_expr(e.operand)})"
+
+        if isinstance(e, BinaryOp):
+            op = OP_MAP.get(e.op, e.op)
+            return f"({self.gen_expr(e.left)} {op} {self.gen_expr(e.right)})"
+
+        if isinstance(e, Call):
+            args = ", ".join(self.gen_expr(a) for a in e.args)
+            return f"{e.name}({args})"
+
+        if isinstance(e, MethodCall):
+            args = ", ".join(self.gen_expr(a) for a in e.args)
+            sep = "->" if e.obj in self.obj_vars else "."
+            return f"{e.obj}{sep}{e.method}({args})"
+
+        if isinstance(e, ObjectCreate):
+            args = ", ".join(self.gen_expr(a) for a in e.args)
+            return f"new {e.class_name}({args})"
+
+        raise RuntimeError("Unknown expression")
