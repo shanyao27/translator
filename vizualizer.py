@@ -20,7 +20,7 @@ class PascalVisualizer:
         self.create_widgets()
         self.bind_hotkeys()
 
-    # UI
+
     def create_widgets(self):
         top = tk.Frame(self.root, bg="#3c3c3c")
         top.pack(fill="x", padx=10, pady=10)
@@ -60,7 +60,7 @@ class PascalVisualizer:
         main = tk.Frame(self.root, bg="#2d2d2d")
         main.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # Pascal
+
         left = tk.Frame(main, bg="#1e1e2e")
         left.pack(side="left", fill="both", expand=True, padx=(0, 5))
 
@@ -72,7 +72,7 @@ class PascalVisualizer:
         )
         self.pascal_text.pack(fill="both", expand=True)
 
-        # C++
+
         right = tk.Frame(main, bg="#1e2e1e")
         right.pack(side="right", fill="both", expand=True, padx=(5, 0))
 
@@ -90,7 +90,7 @@ class PascalVisualizer:
         )
         self.status.pack(fill="x")
 
-    # Добавление горячих клавиш для работы с кодом
+
     def bind_hotkeys(self):
         self.root.bind_all("<Control-c>", self.copy)
         self.root.bind_all("<Control-v>", self.paste)
@@ -126,7 +126,7 @@ class PascalVisualizer:
                 pass
         return "break"
 
-    #Основные методы
+
     def open_file(self):
         path = filedialog.askopenfilename(filetypes=[("Pascal", "*.pas"), ("All", "*.*")])
         if not path:

@@ -42,7 +42,7 @@ class Lexer:
 
             start_line, start_col = self.line, self.col
 
-            # identifiers / keywords
+
             if ch.isalpha():
                 buf = []
                 while self._peek().isalnum() or self._peek() == "_":
@@ -58,7 +58,7 @@ class Lexer:
                     tokens.append(Token(TokType.IDENT, word, start_line, start_col))
                 continue
 
-            # numbers
+
             if ch.isdigit():
                 buf = []
                 while self._peek().isdigit():
@@ -73,14 +73,17 @@ class Lexer:
                     tokens.append(Token(TokType.INT, "".join(buf), start_line, start_col))
                 continue
 
-            # string / char
+
             if ch == "'":
                 self._advance()
                 buf = []
                 while self._peek() not in {"'", "\0", "\n"}:
-                    buf.append(self._advance())
+                    c = self._advance()
+                    if c == "#":
+                        raise LexError(9, "Недопустимый символ в строке", start_line, start_col)
+                    buf.append(c)
                 if self._peek() != "'":
-                    raise LexError(9, "Missing closing quote", start_line, start_col)
+                    raise LexError(9, "Незакрытый строковый литерал", start_line, start_col)
                 self._advance()
                 s = "".join(buf)
                 if len(s) == 1:
@@ -89,23 +92,23 @@ class Lexer:
                     tokens.append(Token(TokType.STRING, s, start_line, start_col))
                 continue
 
-            # multi-ops
+
             two = ch + self._peek(1)
             if two in MULTI_OPS:
                 self._advance(); self._advance()
                 tokens.append(Token(TokType.OP, two, start_line, start_col))
                 continue
 
-            # operators
+
             if ch in SINGLE_OPS:
                 self._advance()
                 tokens.append(Token(TokType.OP, ch, start_line, start_col))
                 continue
 
-            # delimiters
+
             if ch in DELIMS:
                 self._advance()
                 tokens.append(Token(TokType.DELIM, ch, start_line, start_col))
                 continue
 
-            raise LexError(10, f"Unknown symbol: {ch}", start_line, start_col)
+            raise LexError(10, f"Недопустимый символ в выражении: {ch}", start_line, start_col)

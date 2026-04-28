@@ -34,35 +34,20 @@ KEYWORDS = {
     "repeat", "until",
     "writeln", "readln",
     "procedure", "function",
-
-    # типы
     "integer", "real", "char", "boolean", "string",
-
-    # литералы
     "true", "false",
-
-    # логика
     "and", "or", "not",
-
-    # массивы
     "array", "of",
-
-    # арифметика
     "mod",
-
-    # новое
     "const", "type", "record", "case",
-
-    # ООП
     "class", "constructor",
 }
 
 TYPE_KEYWORDS = {"integer", "real", "char", "boolean", "string"}
 
 
-# Операторы
-MULTI_OPS = {"<=", ">=", "<>", ":=", ".."}
+MULTI_OPS = {"<=", ">=", "<>", ":=", "..", "->"}
 SINGLE_OPS = {"+", "-", "*", "/", "=", "<", ">", "%"}
 
-# Разделители
+
 DELIMS = {";", ".", ",", "(", ")", "[", "]", ":"}

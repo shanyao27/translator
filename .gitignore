@@ -53,4 +53,7 @@ tests_output/
 .idea/
 *.swp
 *.swo
-.DS_Store
+.DS_Store.idea/
+__pycache__/
+*.pyc
+venv/

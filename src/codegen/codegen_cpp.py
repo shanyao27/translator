@@ -46,28 +46,28 @@ class CppGenerator:
         self.emit("#include <string>")
         self.emit("")
 
-        # type declarations (structs and classes)
+
         for td in prog.type_decls:
             self.gen_type_decl(td)
         if prog.type_decls:
             self.emit("")
 
-        # method implementations and regular subroutines
+
         for sub in prog.subroutines:
             self.gen_subroutine(sub)
             self.emit("")
 
-        # MAIN
+
         self.emit("int main() {")
         self.ind += 1
 
-        # constants
+
         for c in prog.const_decls:
             self.gen_const(c)
         if prog.const_decls:
             self.emit("")
 
-        # global variables
+
         for d in prog.decls:
             self.gen_decl(d)
         if prog.decls:
@@ -81,7 +81,7 @@ class CppGenerator:
 
         return "\n".join(self.lines)
 
-    # -------------------------
+
     def gen_type_decl(self, td: TypeDecl):
         if isinstance(td.typ, ClassDecl):
             cls = td.typ
@@ -115,13 +115,13 @@ class CppGenerator:
             ret = TYPE_MAP.get(m.ret_type, m.ret_type)
             self.emit(f"{ret} {m.name}({params});")
 
-    # -------------------------
+
     def gen_const(self, c: ConstDecl):
         ctyp = TYPE_MAP.get(c.typ, c.typ)
         val = self.gen_expr(c.value)
         self.emit(f"const {ctyp} {c.name} = {val};")
 
-    # -------------------------
+
     def gen_decl(self, d: VarDecl):
         typ = d.typ
         if isinstance(typ, str):
@@ -140,7 +140,7 @@ class CppGenerator:
             for n in d.names:
                 self.emit(f"{base} {n}{dims};")
 
-    # -------------------------
+
     def gen_subroutine(self, sub):
         if isinstance(sub, MethodImpl):
             params = ", ".join(self._gen_param(p) for p in sub.params)
@@ -181,14 +181,14 @@ class CppGenerator:
             self.ind -= 1
             self.emit("}")
 
-    # -------------------------
+
     def _gen_param(self, p: Param):
         return f"{TYPE_MAP.get(p.typ, p.typ)} {p.name}"
 
     def gen_param(self, p: Param):
         return self._gen_param(p)
 
-    # -------------------------
+
     def gen_block(self, b: Block, wrap=False):
         if wrap:
             self.emit("{")
@@ -201,7 +201,7 @@ class CppGenerator:
             self.ind -= 1
             self.emit("}")
 
-    # -------------------------
+
     def gen_stmt(self, s: Stmt):
         if isinstance(s, Block):
             self.gen_block(s)
@@ -315,7 +315,7 @@ class CppGenerator:
 
         raise RuntimeError("Unknown statement")
 
-    # -------------------------
+
     def gen_assign_left(self, target):
         if isinstance(target, str):
             return target
@@ -327,7 +327,7 @@ class CppGenerator:
             return f"{target.name}{idx}"
         raise RuntimeError("Invalid assignment target")
 
-    # -------------------------
+
     def gen_expr(self, e: Expr):
         if isinstance(e, Literal):
             if e.lit_type == "string":

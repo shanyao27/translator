@@ -3,8 +3,6 @@ from dataclasses import dataclass
 from typing import List, Optional, Union
 
 
-# ================= BASE CLASSES ===================
-
 class Stmt:
     pass
 
@@ -12,8 +10,6 @@ class Stmt:
 class Expr:
     pass
 
-
-# ================= TYPES ===================
 
 @dataclass
 class ArrayType:
@@ -32,8 +28,6 @@ class VarDecl:
     typ: Union[str, ArrayType, RecordType]
 
 
-# ================= CONST / TYPE DECLS ===================
-
 @dataclass
 class ConstDecl:
     name: str
@@ -43,7 +37,7 @@ class ConstDecl:
 
 @dataclass
 class MethodSignature:
-    kind: str          # 'procedure' | 'function' | 'constructor'
+    kind: str
     name: str
     params: List["Param"]
     ret_type: Optional[str]
@@ -60,8 +54,6 @@ class TypeDecl:
     name: str
     typ: Union[str, RecordType, ClassDecl]
 
-
-# ================= SUBROUTINES ===================
 
 class SubroutineDecl:
     pass
@@ -92,13 +84,11 @@ class FunctionDecl(SubroutineDecl):
 class MethodImpl(SubroutineDecl):
     class_name: str
     method_name: str
-    kind: str          # 'procedure' | 'function' | 'constructor'
+    kind: str
     params: List[Param]
     ret_type: Optional[str]
     body: "Block"
 
-
-# ================= STATEMENTS ===================
 
 @dataclass
 class Block(Stmt):
@@ -181,8 +171,6 @@ class Case(Stmt):
     else_branch: Optional[Stmt]
 
 
-# ================= EXPRESSIONS ===================
-
 @dataclass
 class Identifier(Expr):
     name: str
@@ -218,8 +206,6 @@ class BinaryOp(Expr):
     left: Expr
     right: Expr
 
-
-# ================= PROGRAM ===================
 
 @dataclass
 class Program:
